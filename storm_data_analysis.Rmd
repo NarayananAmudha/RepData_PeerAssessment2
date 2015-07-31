@@ -1,0 +1,182 @@
+---
+title: "Impact of Weather Calamities on Economy and Health in the U.S"
+author: "Amudha"
+output: html_document
+---
+
+### Synopsis  
+This report,aim to **analyze the impact of different weather events ** on public health and economy based on the storm database collected from the U.S. National Oceanic and Atmospheric Administration's (NOAA) from 1950 - 2011. We will use the estimates of fatalities, injuries, property and crop damage to decide which types of event are most harmful to the population health and economy. 
+
+
+### Data
+The data comes from U.S. National Oceanic and Atmospheric Administration in csv, compressed in bz2 and following is the link to download the data and also relevant documents. 
+
+ 1. [The main NOAA database](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2)
+ 2. [National Weather Service Storm Data Documentation](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf)
+ 3. [National Climatic Data Center Storm Events FAQ](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf)
+ 
+ The NOAA database is quite large. It contains nearly a million observation of 37 variables. This calls for some data cleaning and data processing to speed up the analysis.
+
+ 
+## Pre-Requisite
+ Load required R libraries
+
+``` {r, echo=FALSE}
+suppressWarnings(library(car));
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+``` {r}
+library(plyr)
+library(ggplot2)
+library(car)
+```
+
+### Data Processing
+ For reproducability purposes, **load and clean the data from it's original source** 
+
+
+``` {r}
+ # Check to see if the data file exists in the working directory
+if (!file.exists("repdata_data_StormData.csv")) {
+
+    # Check to see if the zipped file exists in the working directory
+    if (!file.exists("repdata_data_StormData.csv.bz2")) {
+
+        # Download thye zipped file from the WEB and unzip it
+        website <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+        download.file(website, filename, mode = "wb")
+    }
+
+    # Unzip the file
+    bzfile("repdata_data_StormData.csv.bz2")
+
+}
+```
+For reasons of effectiveness, speed and computer memory management, transform the data by **reading only the specific columns of the data**, which are needed for analysis.
+
+``` {r}
+sublist <- c("EVTYPE", "FATALITIES", "INJURIES", "PROPDMG", "PROPDMGEXP", "CROPDMG", 
+    "CROPDMGEXP")
+df <- read.table("./repdata_data_StormData.csv", sep = ",", header = TRUE)
+df <- subset(df, select = sublist)
+
+## change column names to lower case
+names(df) <- tolower(names(df))
+```
+## Impact of Severe Weather on Public Health
+
+### Data Analysis
+
+**Get casualties (sum of fatalities and injuries) for each event type** and  store it in a new dataframe
+
+``` {r}
+## sum of fatalities and injuries for each type of event
+df.casualties <- ddply(df, "evtype", summarize, fatalities = sum(fatalities), 
+    injuries = sum(injuries), casualties = sum(fatalities + injuries))
+``` 
+
+Since there are 985 types of casualties we can't **plot** all of them, we will keep the **top 10** and sum all the rest in an extra one row **All other Calamities** to show the impact of other events in analysis
+
+``` {r}
+## sort the casualties by the top casualties.
+df.casualties <- arrange(df.casualties, desc(casualties), desc(fatalities), 
+    desc(injuries))
+
+## reorder event type levels, will show a nicer plot
+df.casualties$evtype <- reorder(df.casualties$evtype, -df.casualties$casualties)
+
+## temporary dataframe containing the top ten
+temp <- df.casualties[1:10, ]
+
+## new dataframe containing the sum for all rows but the top ten ones
+otherevt <- data.frame(evtype = "All Other Calamities", fatalities = sum(df.casualties$fatalities[11:length(df.casualties)]), 
+    injuries = sum(df.casualties$injuries[11:length(df.casualties)]), casualties = sum(df.casualties$casualties[11:length(df.casualties)]))
+## merge the two data frames
+df.casualties <- rbind(temp, otherevt)
+colnames(df.casualties) = c("Events", "Fatalities","Injuries","Total casualties")
+```
+**Table of Weather Events that have severe impact to U.S Population**
+
+``` {r}
+knitr::kable(df.casualties)
+```
+
+
+### Result
+To visualize the impact of severe weather on the public health we will make a bar graph of the impact of the most significant weather events on the public health comparing with  each casualties 
+
+``` {r}
+casualties.matrix = as.matrix(df.casualties[,c(4,2,3)])
+barplot(casualties.matrix, beside = TRUE, col=rainbow(11),
+        main="Effect of Severe Weather on Public Health", ylab="Population")
+legend("topright", legend=df.casualties$Events, cex=0.7, fill=rainbow(11))
+
+```
+
+From the graphs it can be seen that more public is affected  by **Tornadoes** as there were more injuries and fatalities as well.Even number of public affected by all other calamaties were less comparing to Tornadoes
+
+## Impact of Severe Weather on Economy
+### Data Analysis
+
+**Get Total Damage Value (sum of Property Damage Value and Crop Damage Value) for each event type** and  store it in a new dataframe
+
+``` {r}
+## we'll start by subsetting on the economic variables
+df.econ <- df[, -c(2, 3)]
+
+## recode property and crop damage columns to thier dollar exponent value
+df.econ$propdmgexp2 <- recode(df.econ$propdmgexp, "'h'=1e2;'H'=1e2;'k'=1e3;'K'=1e3;'m'=1e6;'M'=1e6;'b'=1e9;'B'=1e9;'0'=1;'1'=10;'2'=100;'3'=1000;'4'=10000;'5'=100000;'6'=1000000;'7'=10000000;'8'=100000000;'-'=0;'?'=0;'+'=0;''=0")
+df.econ$cropdmgexp2 <- recode(df.econ$cropdmgexp, "'h'=100;'H'=100;'k'=1000;'K'=1000;'m'=1000000;'M'=1000000;'b'=1000000000;'B'=1000000000;'0'=1;'1'=10;'2'=100;'3'=1000;'4'=10000;'5'=100000;'6'=1000000;'7'=10000000;'8'=100000000;'-'=0;'?'=0;'+'=0;''=0")
+
+## Add new columns for dollar value of property and crop damages
+df.econ$propdmgval <- df.econ$propdmg * as.numeric(levels(df.econ$propdmgexp2))[df.econ$propdmgexp2]
+df.econ$cropdmgval <- df.econ$cropdmg * as.numeric(levels(df.econ$cropdmgexp2))[df.econ$cropdmgexp2]
+df.econ$totaldmgval <- df.econ$propdmgval + df.econ$cropdmgval
+
+## Add the total damage values and the event type
+df.econ2 <- df.econ[, c("evtype", "propdmgval", "cropdmgval", "totaldmgval")]
+df.econ2 <- arrange(df.econ2, desc(totaldmgval))
+df.econ3 <- ddply(df.econ2, "evtype", summarize, propdmgval = sum(propdmgval), 
+    cropdmgval = sum(cropdmgval), totaldmg = sum(propdmgval + cropdmgval))
+df.econ3 <- arrange(df.econ3, desc(totaldmg))
+df.econ3$evtype <- reorder(df.econ3$evtype, -df.econ3$totaldmg)
+``` 
+
+Since there are 985 types of casualties we can't **plot** all of them, we will keep the **top 10** and sum all the rest in an extra one row **All other Calamities** to show the impact of other events in analysis
+
+``` {r}
+## temporary dataframe containing the top ten
+n <- 10
+temp <- df.econ3[1:n, ]
+## new dataframe containing the sum for all rows but the top ten ones
+otherevt <- data.frame(evtype = "All Other Calamities", propdmgval = sum(df.econ3$propdmgval[n + 
+    1:length(df.econ3)]), cropdmgval = sum(df.econ3$cropdmgval[n + 1:length(df.econ3)]), 
+    totaldmg = sum(df.econ3$totaldmg[n + 1:length(df.econ3)]))
+## merge the two data frames
+df.econ.list <- rbind(temp, otherevt)
+```
+**Table of Top Weather Events that cause severe damage to Property and Crop in terms of U.S dollars**
+
+``` {r}
+df.econ.tab <- df.econ.list
+colnames(df.econ.tab) = c("Events", "Property Damage Value","Crop Damage Value","Total Damage Value")
+knitr::kable(df.econ.tab)
+```
+  
+### Result
+To visualize the impact of severe weather on the economy we will make a bar graph of the impact of the most significant weather events on the economy: 
+
+``` {r}
+damage.matrix = as.matrix(df.econ.tab[,c(4,2,3)])/1000000000 # to show as billion $
+barplot(damage.matrix, beside = TRUE, col=rainbow(11),
+        main="Effect of Severe Weather on the U.S. Economy", ylab="Damage Value in billion dollars")
+legend("topright", legend=df.econ.tab$Events, cex=0.7, fill=rainbow(11))
+
+```
+
+From the graphs it can be seen that U.S Economy is affected  by **Flood** .Even damage value of all other calamaties were less comparing to Flood.
+
+
+### Conclusion
+From these data analysis, we found that **tornado and excessive heat** are most severe weather events which **cause more casualities to U.S Population**, while **flood, drought, and hurricane/typhoon** have the **greatest economic consequences** of the U.S by causing more damge to property and crop.
